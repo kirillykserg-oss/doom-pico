@@ -40,7 +40,7 @@ typedef WORD            WCHAR;  /* UTF-16 character type */
 #ifdef ST7735
 // ST7735: офіційно ~15 МГц, на коротких дротах зазвичай тримає 16-24 МГц.
 // Якщо на екрані шум -- зменш (наприклад до 8000000).
-#define    DISPLAY_SPI_CLOCK_SPEED_HZ 16000000
+#define    DISPLAY_SPI_CLOCK_SPEED_HZ 8000000
 #define    DISPLAY_PIXEL_FORMAT 0x05   /* 16 біт для ST7735 */
 #else
 #define    DISPLAY_SPI_CLOCK_SPEED_HZ 63000000
