@@ -46,8 +46,13 @@ jobs:
         run: |
           cd $HOME/work/rp2040-doom/rp2040-build
           BIN=$(find . -name doom_tiny.bin | head -1)
-          echo "Firmware: $BIN"
-          python3 "$GITHUB_WORKSPACE/make_uf2.py" "$BIN" "$GITHUB_WORKSPACE/doom1.whx" \
+          echo "Firmware: $BIN ($(stat -c%s "$BIN") bytes)"
+          # беремо рівні (doom1.whx) з самого репозиторію Doom -- вони точно відповідають його коду
+          UP=$(find $HOME/work/rp2040-doom -maxdepth 2 -name doom1.whx | head -1)
+          echo "Upstream whx: $UP"
+          if [ -n "$UP" ]; then WHX="$UP"; else WHX="$GITHUB_WORKSPACE/doom1.whx"; fi
+          md5sum "$WHX" "$GITHUB_WORKSPACE/doom1.whx" || true
+          python3 "$GITHUB_WORKSPACE/make_uf2.py" "$BIN" "$WHX" \
             "$GITHUB_WORKSPACE/DOOM.uf2" 0x10042000
 
       - uses: actions/upload-artifact@v4
