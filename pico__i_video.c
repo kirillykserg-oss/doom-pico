@@ -1545,6 +1545,10 @@ void I_InitGraphics(void)
 
     display_init(); 
     display_clear();
+#ifdef ST7735
+    /* ініціалізація пройшла повільно й надійно -- тепер вмикаємо швидкий режим для відео */
+    spi_set_baudrate(DISPLAY_SPI_PORT, DISPLAY_SPI_FAST_HZ);
+#endif
 #ifdef ILI9341
     #pragma message "ILI9341 defined."
     ili9341_infones_frame_timing_register_init();
