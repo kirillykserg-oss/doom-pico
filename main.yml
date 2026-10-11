@@ -37,7 +37,7 @@ jobs:
         run: |
           cd $HOME/work/rp2040-doom
           mkdir -p rp2040-build && cd rp2040-build
-          cmake -DCMAKE_BUILD_TYPE=MinSizeRel -DPICO_BOARD=vgaboard \
+          cmake -DCMAKE_BUILD_TYPE=MinSizeRel -DPICO_BOARD=pico \
             -DPICO_SDK_PATH=$HOME/work/pico-sdk \
             -DPICO_EXTRAS_PATH=$HOME/work/pico-extras ..
           make -j4 doom_tiny
