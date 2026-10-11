@@ -1205,8 +1205,10 @@ static void __not_in_flash_func(free_buffer_callback)() {
 
 //static semaphore_t init_sem;
 void display_debug_stage(int level, int reinit);
+static volatile int core1_progress = 0;
 static void core1() {
 #if PICO_ON_DEVICE
+    core1_progress = 1;
     display_debug_stage(6, 0);   /* ЕТАП 6: друге ядро запустилось */
 #endif
 #if !PICO_ON_DEVICE
@@ -1216,6 +1218,7 @@ static void core1() {
 #endif
     scanvideo_setup(&VGA_MODE);
 #if PICO_ON_DEVICE
+    core1_progress = 2;
     display_debug_stage(7, 0);   /* ЕТАП 7: scanvideo_setup() завершився */
 #endif
 //    sem_release(&init_sem);
@@ -1224,6 +1227,7 @@ static void core1() {
     irq_set_enabled(LOW_PRIO_IRQ, true);
     //dahai
     scanvideo_set_scanline_release_fn(free_buffer_callback);
+    core1_progress = 3;
     display_debug_stage(8, 0);   /* ЕТАП 8: готові до запуску відеотаймінгу */
 #endif
     scanvideo_timing_enable(true);
@@ -1552,6 +1556,37 @@ void display_debug_stage(int level, int reinit)
     }
 }
 
+#if PICO_ON_DEVICE
+#include "hardware/dma.h"
+#include "hardware/pio.h"
+static void dbg_block(int x, int y, int w, int h, uint8_t hi, uint8_t lo)
+{
+    uint8_t buf[10 * 4 * 2];
+    for (int i = 0; i < w * h; i++) { buf[2 * i] = hi; buf[2 * i + 1] = lo; }
+    display_set_address(x, y, x + w - 1, y + h - 1);
+    display_write_data(buf, w * h * 2);
+}
+/* Звіт, якщо друге ядро не відповіло за 3 с. Малює:
+ *  рядок 2 (зелені квадрати): прогрес ядра 1 (1 = стартувало, 2 = scanvideo_setup пройшов, 3 = майже готово)
+ *  рядок 3: зайняті DMA-канали 0-11 (білий = зайнятий)
+ *  рядок 4: зайняті state machine PIO0 (зліва) і PIO1 (справа)
+ *  рядок 5: увімкнені state machine PIO0 (зліва) і PIO1 (справа) */
+static void display_debug_core1_report(void)
+{
+    for (int i = 0; i < 3; i++)
+        dbg_block(i * 13, 8, 10, 4, i < core1_progress ? 0x07 : 0x42, i < core1_progress ? 0xE0 : 0x08);
+    for (int ch = 0; ch < 12; ch++)
+        dbg_block(ch * 13, 14, 10, 4, dma_channel_is_claimed(ch) ? 0xFF : 0x42, dma_channel_is_claimed(ch) ? 0xFF : 0x08);
+    for (int sm = 0; sm < 4; sm++) {
+        dbg_block(sm * 13, 20, 10, 4, pio_sm_is_claimed(pio0, sm) ? 0xFF : 0x42, pio_sm_is_claimed(pio0, sm) ? 0xFF : 0x08);
+        dbg_block(80 + sm * 13, 20, 10, 4, pio_sm_is_claimed(pio1, sm) ? 0xFF : 0x42, pio_sm_is_claimed(pio1, sm) ? 0xFF : 0x08);
+        bool en0 = (pio0_hw->ctrl >> sm) & 1u, en1 = (pio1_hw->ctrl >> sm) & 1u;
+        dbg_block(sm * 13, 26, 10, 4, en0 ? 0xFF : 0x42, en0 ? 0xFF : 0x08);
+        dbg_block(80 + sm * 13, 26, 10, 4, en1 ? 0xFF : 0x42, en1 ? 0xFF : 0x08);
+    }
+}
+#endif
+
 void I_InitGraphics(void)
 {
     display_debug_stage(3, 0);   /* ЕТАП 3: Doom дійшов до ініціалізації графіки */
@@ -1585,7 +1620,14 @@ void I_InitGraphics(void)
     display_debug_stage(5, 0);   /* ЕТАП 5: pd_init виконано */
     multicore_launch_core1(core1);
     // wait for core1 launch as it may do malloc and we have no mutex around that
+#if PICO_ON_DEVICE
+    if (!sem_acquire_timeout_ms(&core1_launch, 3000)) {
+        display_debug_core1_report();
+        while (true) tight_loop_contents();
+    }
+#else
     sem_acquire_blocking(&core1_launch);
+#endif
     display_debug_stage(9, 0);   /* ЕТАП 9: друге ядро й відео запущені */
 #if USE_ZONE_FOR_MALLOC
     disallow_core1_malloc = true;
