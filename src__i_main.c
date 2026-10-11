@@ -43,7 +43,7 @@ extern void display_debug_fill(uint8_t hi, uint8_t lo);
 #ifndef DOOM_SYS_CLOCK_KHZ
 // Частота процесора в кГц. 270000 не тримають деякі плати (зависає на пурпуровому етапі).
 // Якщо й 250000 зависає -- спробуй 200000, потім 133000.
-#define DOOM_SYS_CLOCK_KHZ 200000
+#define DOOM_SYS_CLOCK_KHZ 133000
 #endif
 #if USE_PICO_NET
 #include "piconet.h"
