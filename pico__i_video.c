@@ -1206,6 +1206,9 @@ static void __not_in_flash_func(free_buffer_callback)() {
 //static semaphore_t init_sem;
 void display_debug_stage(int level, int reinit);
 static void core1() {
+#if PICO_ON_DEVICE
+    display_debug_stage(6, 0);   /* ЕТАП 6: друге ядро запустилось */
+#endif
 #if !PICO_ON_DEVICE
     void simulate_video_pio_video_doom(const uint32_t *dma_data, uint32_t dma_data_size,
                                        uint16_t *pixel_buffer, int32_t max_pixels, int32_t expected_width, bool overlay);
@@ -1213,7 +1216,7 @@ static void core1() {
 #endif
     scanvideo_setup(&VGA_MODE);
 #if PICO_ON_DEVICE
-    display_debug_stage(6, 0);   /* ЕТАП 6: scanvideo_setup() завершився */
+    display_debug_stage(7, 0);   /* ЕТАП 7: scanvideo_setup() завершився */
 #endif
 //    sem_release(&init_sem);
 #if PICO_ON_DEVICE
@@ -1221,7 +1224,7 @@ static void core1() {
     irq_set_enabled(LOW_PRIO_IRQ, true);
     //dahai
     scanvideo_set_scanline_release_fn(free_buffer_callback);
-    display_debug_stage(7, 0);   /* ЕТАП 7: готові до запуску відеотаймінгу */
+    display_debug_stage(8, 0);   /* ЕТАП 8: готові до запуску відеотаймінгу */
 #endif
     scanvideo_timing_enable(true);
 #if PICO_ON_DEVICE
@@ -1583,7 +1586,7 @@ void I_InitGraphics(void)
     multicore_launch_core1(core1);
     // wait for core1 launch as it may do malloc and we have no mutex around that
     sem_acquire_blocking(&core1_launch);
-    display_debug_stage(8, 0);   /* ЕТАП 8: друге ядро й відео запущені */
+    display_debug_stage(9, 0);   /* ЕТАП 9: друге ядро й відео запущені */
 #if USE_ZONE_FOR_MALLOC
     disallow_core1_malloc = true;
 #endif
