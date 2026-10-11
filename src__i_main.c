@@ -36,6 +36,9 @@
 #include "hardware/clocks.h"
 #endif
 #endif
+#if PICO_ON_DEVICE
+extern void display_debug_fill(uint8_t hi, uint8_t lo);
+#endif
 #if USE_PICO_NET
 #include "piconet.h"
 #endif
@@ -66,9 +69,11 @@ int main(int argc, char **argv)
 #endif
 #if PICO_ON_DEVICE
     sleep_ms(500);
+    display_debug_fill(0xF8, 0x1F);   /* ЕТАП 1: пурпурний -- main() запустився */
     vreg_set_voltage(VREG_VOLTAGE_1_30);
     // todo pause? is this the cause of the cold start isue?
     set_sys_clock_khz(270000, true);
+    display_debug_fill(0xFF, 0xE0);   /* ЕТАП 2: жовтий або блакитний -- частота 270 МГц стабільна */
 #if !USE_PICO_NET
     // debug ?
 //    gpio_debug_pins_init();

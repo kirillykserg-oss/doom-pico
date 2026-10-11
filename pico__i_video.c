@@ -1520,8 +1520,24 @@ void st7789_infones_frame_timing_register_init()
 
 }
 
+/* ---- ДІАГНОСТИКА: заливка екрана кольором для відстеження етапів запуску ---- */
+void display_debug_fill(uint8_t hi, uint8_t lo)
+{
+    display_init();   /* повторна ініціалізація безпечна; заодно перераховує швидкість SPI */
+    display_set_address(0, 0, DISPLAY_WIDTH - 1, DISPLAY_HEIGHT - 1);
+    uint8_t line[DISPLAY_WIDTH * 2];
+    for (int i = 0; i < DISPLAY_WIDTH; i++) {
+        line[2 * i] = hi;
+        line[2 * i + 1] = lo;
+    }
+    for (int y = 0; y < DISPLAY_HEIGHT; y++) {
+        display_write_data(line, sizeof(line));
+    }
+}
+
 void I_InitGraphics(void)
 {
+    display_debug_fill(0x07, 0xE0);   /* ЕТАП 3: зелений -- Doom дійшов до ініціалізації графіки */
     //dahai
     gpio_init(LED_PIN);
     gpio_set_dir(LED_PIN, GPIO_OUT);
