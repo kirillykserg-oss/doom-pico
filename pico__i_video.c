@@ -1204,6 +1204,7 @@ static void __not_in_flash_func(free_buffer_callback)() {
 #endif
 
 //static semaphore_t init_sem;
+void display_debug_stage(int level, int reinit);
 static void core1() {
 #if !PICO_ON_DEVICE
     void simulate_video_pio_video_doom(const uint32_t *dma_data, uint32_t dma_data_size,
@@ -1211,12 +1212,16 @@ static void core1() {
     scanvideo_set_simulate_scanvideo_pio_fn(VIDEO_DOOM_PROGRAM_NAME, simulate_video_pio_video_doom);
 #endif
     scanvideo_setup(&VGA_MODE);
+#if PICO_ON_DEVICE
+    display_debug_stage(6, 0);   /* ЕТАП 6: scanvideo_setup() завершився */
+#endif
 //    sem_release(&init_sem);
 #if PICO_ON_DEVICE
     irq_set_exclusive_handler(LOW_PRIO_IRQ, fill_scanlines);
     irq_set_enabled(LOW_PRIO_IRQ, true);
     //dahai
     scanvideo_set_scanline_release_fn(free_buffer_callback);
+    display_debug_stage(7, 0);   /* ЕТАП 7: готові до запуску відеотаймінгу */
 #endif
     scanvideo_timing_enable(true);
 #if PICO_ON_DEVICE
@@ -1533,13 +1538,13 @@ void display_debug_stage(int level, int reinit)
         display_clear();
     }
     dbg_level = level;
-    uint8_t blk[16 * 8 * 2];
-    for (int i = 0; i < 16 * 8; i++) {
+    uint8_t blk[16 * 4 * 2];   /* маленький буфер: стек другого ядра лише ~1.2 КБ */
+    for (int i = 0; i < 16 * 4; i++) {
         blk[2 * i] = 0xF8;
         blk[2 * i + 1] = 0x1F;
     }
     for (int n = 0; n < dbg_level; n++) {
-        display_set_address(n * 20, 0, n * 20 + 15, 7);
+        display_set_address(n * 20, 0, n * 20 + 15, 3);
         display_write_data(blk, sizeof(blk));
     }
 }
@@ -1578,7 +1583,7 @@ void I_InitGraphics(void)
     multicore_launch_core1(core1);
     // wait for core1 launch as it may do malloc and we have no mutex around that
     sem_acquire_blocking(&core1_launch);
-    display_debug_stage(6, 0);   /* ЕТАП 6: друге ядро й відео запущені */
+    display_debug_stage(8, 0);   /* ЕТАП 8: друге ядро й відео запущені */
 #if USE_ZONE_FOR_MALLOC
     disallow_core1_malloc = true;
 #endif
