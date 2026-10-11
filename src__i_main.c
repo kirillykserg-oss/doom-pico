@@ -37,13 +37,13 @@
 #endif
 #endif
 #if PICO_ON_DEVICE
-extern void display_debug_fill(uint8_t hi, uint8_t lo);
+extern void display_debug_stage(int level, int reinit);
 #endif
 
 #ifndef DOOM_SYS_CLOCK_KHZ
 // Частота процесора в кГц. 270000 не тримають деякі плати (зависає на пурпуровому етапі).
 // Якщо й 250000 зависає -- спробуй 200000, потім 133000.
-#define DOOM_SYS_CLOCK_KHZ 133000
+#define DOOM_SYS_CLOCK_KHZ 250000
 #endif
 #if USE_PICO_NET
 #include "piconet.h"
@@ -75,11 +75,11 @@ int main(int argc, char **argv)
 #endif
 #if PICO_ON_DEVICE
     sleep_ms(500);
-    display_debug_fill(0xF8, 0x1F);   /* ЕТАП 1: пурпурний -- main() запустився */
+    display_debug_stage(1, 1);   /* ЕТАП 1: main() запустився */
     vreg_set_voltage(VREG_VOLTAGE_1_30);
     // todo pause? is this the cause of the cold start isue?
     set_sys_clock_khz(DOOM_SYS_CLOCK_KHZ, true);
-    display_debug_fill(0xFF, 0xE0);   /* ЕТАП 2: жовтий або блакитний -- нова частота стабільна */
+    display_debug_stage(2, 1);   /* ЕТАП 2: частота процесора встановлена */
 #if !USE_PICO_NET
     // debug ?
 //    gpio_debug_pins_init();

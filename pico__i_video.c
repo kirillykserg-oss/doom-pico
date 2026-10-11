@@ -1270,10 +1270,10 @@ static void display_write_data(const uint8_t *data, size_t length)
     /* Set CS high to ignore any traffic on SPI bus. */
     gpio_put(DISPLAY_PIN_CS, 1);
 }
+static uint16_t prev_x1, prev_x2, prev_y1, prev_y2;
  void display_set_address(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2) {
     uint8_t command;
     uint8_t data[4];
-    static uint16_t prev_x1, prev_x2, prev_y1, prev_y2;
 
     x1 = x1 + DISPLAY_OFFSET_X;
     y1 = y1 + DISPLAY_OFFSET_Y;
@@ -1363,6 +1363,8 @@ static void display_spi_master_init()
  */
 void display_init()
 {
+    /* після апаратного скидання екран забуває вікно -- скидаємо кеш адрес */
+    prev_x1 = prev_x2 = prev_y1 = prev_y2 = 0xFFFF;
 
     /* Init the spi driver. */
     display_spi_master_init();
@@ -1520,24 +1522,31 @@ void st7789_infones_frame_timing_register_init()
 
 }
 
-/* ---- ДІАГНОСТИКА: заливка екрана кольором для відстеження етапів запуску ---- */
-void display_debug_fill(uint8_t hi, uint8_t lo)
+/* ---- ДІАГНОСТИКА: смуга прогресу зверху екрана (пурпурні квадрати) ----
+ * Кожен етап запуску додає ще один квадрат. Смуга лежить у рядках 0-7, які Doom
+ * не чіпає, тому лишається видимою і під час гри. */
+static int dbg_level = 0;
+void display_debug_stage(int level, int reinit)
 {
-    display_init();   /* повторна ініціалізація безпечна; заодно перераховує швидкість SPI */
-    display_set_address(0, 0, DISPLAY_WIDTH - 1, DISPLAY_HEIGHT - 1);
-    uint8_t line[DISPLAY_WIDTH * 2];
-    for (int i = 0; i < DISPLAY_WIDTH; i++) {
-        line[2 * i] = hi;
-        line[2 * i + 1] = lo;
+    if (reinit) {
+        display_init();
+        display_clear();
     }
-    for (int y = 0; y < DISPLAY_HEIGHT; y++) {
-        display_write_data(line, sizeof(line));
+    dbg_level = level;
+    uint8_t blk[16 * 8 * 2];
+    for (int i = 0; i < 16 * 8; i++) {
+        blk[2 * i] = 0xF8;
+        blk[2 * i + 1] = 0x1F;
+    }
+    for (int n = 0; n < dbg_level; n++) {
+        display_set_address(n * 20, 0, n * 20 + 15, 7);
+        display_write_data(blk, sizeof(blk));
     }
 }
 
 void I_InitGraphics(void)
 {
-    display_debug_fill(0x07, 0xE0);   /* ЕТАП 3: зелений -- Doom дійшов до ініціалізації графіки */
+    display_debug_stage(3, 0);   /* ЕТАП 3: Doom дійшов до ініціалізації графіки */
     //dahai
     gpio_init(LED_PIN);
     gpio_set_dir(LED_PIN, GPIO_OUT);
@@ -1549,6 +1558,7 @@ void I_InitGraphics(void)
     /* ініціалізація пройшла повільно й надійно -- тепер вмикаємо швидкий режим для відео */
     spi_set_baudrate(DISPLAY_SPI_PORT, DISPLAY_SPI_FAST_HZ);
 #endif
+    display_debug_stage(4, 0);   /* ЕТАП 4: екран ініціалізовано і очищено */
 #ifdef ILI9341
     #pragma message "ILI9341 defined."
     ili9341_infones_frame_timing_register_init();
@@ -1564,9 +1574,11 @@ void I_InitGraphics(void)
     sem_init(&display_frame_freed, 1, 2);
     sem_init(&core1_launch, 0, 1);
     pd_init();
+    display_debug_stage(5, 0);   /* ЕТАП 5: pd_init виконано */
     multicore_launch_core1(core1);
     // wait for core1 launch as it may do malloc and we have no mutex around that
     sem_acquire_blocking(&core1_launch);
+    display_debug_stage(6, 0);   /* ЕТАП 6: друге ядро й відео запущені */
 #if USE_ZONE_FOR_MALLOC
     disallow_core1_malloc = true;
 #endif
