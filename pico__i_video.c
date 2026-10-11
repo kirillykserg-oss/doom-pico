@@ -1048,7 +1048,9 @@ void __no_inline_not_in_flash_func(new_frame_stuff)() {
 //dahai
  // void display_set_address(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2);
 void ili9341_infones_frame_timing_register_init();
+volatile uint32_t dbg_fill_calls = 0, dbg_fill_frames = 0;   /* діагностика */
 void /*__scratch_x("scanlines")*/ fill_scanlines() {
+    dbg_fill_calls++;
 #if 1
 //dahai
 #if SUPPORT_TEXT
@@ -1069,6 +1071,7 @@ void /*__scratch_x("scanlines")*/ fill_scanlines() {
         int scanline = scanvideo_scanline_number(buffer->scanline_id);
         if ((int8_t) frame != last_frame_number) {
             last_frame_number = frame;
+            dbg_fill_frames++;
             new_frame_stuff();
         //dahai
         gpio_xor_mask(1<<LED_PIN);
@@ -1559,31 +1562,57 @@ void display_debug_stage(int level, int reinit)
 #if PICO_ON_DEVICE
 #include "hardware/dma.h"
 #include "hardware/pio.h"
-static void dbg_block(int x, int y, int w, int h, uint8_t hi, uint8_t lo)
+static const uint8_t dbg_font[16][5] = {
+    {0x3E,0x51,0x49,0x45,0x3E},{0x00,0x42,0x7F,0x40,0x00},{0x42,0x61,0x51,0x49,0x46},{0x21,0x41,0x45,0x4B,0x31},
+    {0x18,0x14,0x12,0x7F,0x10},{0x27,0x45,0x45,0x45,0x39},{0x3C,0x4A,0x49,0x49,0x30},{0x01,0x71,0x09,0x05,0x03},
+    {0x36,0x49,0x49,0x49,0x36},{0x06,0x49,0x49,0x29,0x1E},{0x7E,0x11,0x11,0x11,0x7E},{0x7F,0x49,0x49,0x49,0x36},
+    {0x3E,0x41,0x41,0x41,0x22},{0x7F,0x41,0x41,0x41,0x3E},{0x7F,0x49,0x49,0x49,0x41},{0x7F,0x09,0x09,0x09,0x01}};
+static void dbg_hex_digit(int x, int y, unsigned v)
 {
-    uint8_t buf[10 * 4 * 2];
-    for (int i = 0; i < w * h; i++) { buf[2 * i] = hi; buf[2 * i + 1] = lo; }
-    display_set_address(x, y, x + w - 1, y + h - 1);
-    display_write_data(buf, w * h * 2);
+    uint8_t buf[10 * 14 * 2];
+    const uint8_t *g = dbg_font[v & 15];
+    for (int row = 0; row < 14; row++) {
+        for (int col = 0; col < 10; col++) {
+            bool on = (g[col / 2] >> (row / 2)) & 1;
+            buf[2 * (row * 10 + col)] = on ? 0xFF : 0x00;
+            buf[2 * (row * 10 + col) + 1] = on ? 0xFF : 0x00;
+        }
+    }
+    display_set_address(x, y, x + 9, y + 13);
+    display_write_data(buf, sizeof(buf));
 }
-/* Звіт, якщо друге ядро не відповіло за 3 с. Малює:
- *  рядок 2 (зелені квадрати): прогрес ядра 1 (1 = стартувало, 2 = scanvideo_setup пройшов, 3 = майже готово)
- *  рядок 3: зайняті DMA-канали 0-11 (білий = зайнятий)
- *  рядок 4: зайняті state machine PIO0 (зліва) і PIO1 (справа)
- *  рядок 5: увімкнені state machine PIO0 (зліва) і PIO1 (справа) */
+static void dbg_hex(int x, int y, uint32_t v, int digits)
+{
+    for (int i = 0; i < digits; i++)
+        dbg_hex_digit(x + i * 12, y, (v >> (4 * (digits - 1 - i))) & 15);
+}
+/* Звіт, якщо друге ядро не відповіло за 3 с (шістнадцяткові цифри):
+ *  рядок 1: [прогрес core1][кількість викликів fill_scanlines, 4 цифри][кількість кадрів, 2 цифри]
+ *  рядок 2: [зайняті DMA-канали 0-11, 3 цифри][PIO0 зайняті SM][PIO1 зайняті SM][PIO0 увімкнені SM][PIO1 увімкнені SM]
+ *  рядок 3: функції пінів GP16 GP17 GP18 GP19 GP20 (5=SIO, 1=SPI, 6=PIO0, 7=PIO1, 0=XIP... )
+ *  рядок 4: функції пінів GP2 GP3 GP4 GP5 GP6 GP7 GP8 (кнопки; мають бути 5) */
 static void display_debug_core1_report(void)
 {
-    for (int i = 0; i < 3; i++)
-        dbg_block(i * 13, 8, 10, 4, i < core1_progress ? 0x07 : 0x42, i < core1_progress ? 0xE0 : 0x08);
-    for (int ch = 0; ch < 12; ch++)
-        dbg_block(ch * 13, 14, 10, 4, dma_channel_is_claimed(ch) ? 0xFF : 0x42, dma_channel_is_claimed(ch) ? 0xFF : 0x08);
+    dbg_hex(2, 8, core1_progress, 1);
+    dbg_hex(18, 8, dbg_fill_calls, 4);
+    dbg_hex(70, 8, dbg_fill_frames, 2);
+
+    uint32_t dma = 0, pc0 = 0, pc1 = 0, pe0 = 0, pe1 = 0;
+    for (int ch = 0; ch < 12; ch++) if (dma_channel_is_claimed(ch)) dma |= 1u << ch;
     for (int sm = 0; sm < 4; sm++) {
-        dbg_block(sm * 13, 20, 10, 4, pio_sm_is_claimed(pio0, sm) ? 0xFF : 0x42, pio_sm_is_claimed(pio0, sm) ? 0xFF : 0x08);
-        dbg_block(80 + sm * 13, 20, 10, 4, pio_sm_is_claimed(pio1, sm) ? 0xFF : 0x42, pio_sm_is_claimed(pio1, sm) ? 0xFF : 0x08);
-        bool en0 = (pio0_hw->ctrl >> sm) & 1u, en1 = (pio1_hw->ctrl >> sm) & 1u;
-        dbg_block(sm * 13, 26, 10, 4, en0 ? 0xFF : 0x42, en0 ? 0xFF : 0x08);
-        dbg_block(80 + sm * 13, 26, 10, 4, en1 ? 0xFF : 0x42, en1 ? 0xFF : 0x08);
+        if (pio_sm_is_claimed(pio0, sm)) pc0 |= 1u << sm;
+        if (pio_sm_is_claimed(pio1, sm)) pc1 |= 1u << sm;
+        if ((pio0_hw->ctrl >> sm) & 1u) pe0 |= 1u << sm;
+        if ((pio1_hw->ctrl >> sm) & 1u) pe1 |= 1u << sm;
     }
+    dbg_hex(2, 26, dma, 3);
+    dbg_hex(42, 26, pc0, 1);
+    dbg_hex(58, 26, pc1, 1);
+    dbg_hex(74, 26, pe0, 1);
+    dbg_hex(90, 26, pe1, 1);
+
+    for (int i = 0; i < 5; i++) dbg_hex(2 + i * 14, 44, gpio_get_function(16 + i), 1);
+    for (int i = 0; i < 7; i++) dbg_hex(2 + i * 14, 62, gpio_get_function(2 + i), 1);
 }
 #endif
 
